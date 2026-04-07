@@ -3,45 +3,117 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Modelo 303 - Automatización</title>
+  <title>Automatización Modelos</title>
+
   <style>
-    body { font-family: Arial, sans-serif; margin: 2rem; background: #f6f7fb; color: #222; }
-    .card { background: white; border-radius: 12px; padding: 1.25rem; box-shadow: 0 2px 10px rgba(0,0,0,.08); margin-bottom: 1rem; }
-    button { padding: .8rem 1.2rem; border: 0; border-radius: 8px; cursor: pointer; }
-    button.primary { background: #1d4ed8; color: white; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ddd; padding: .55rem; font-size: .92rem; }
-    th { background: #f1f5f9; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background: #f6f7fb;
+      color: #222;
+    }
+
+    h1 { margin-bottom: 0.5rem; }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.25rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,.08);
+      margin-bottom: 1rem;
+    }
+
+    button {
+      padding: .8rem 1.2rem;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button.primary {
+      background: #1d4ed8;
+      color: white;
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    button:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: .55rem;
+      font-size: .92rem;
+    }
+
+    th {
+      background: #f1f5f9;
+    }
+
     .muted { color: #666; font-size: .92rem; }
-    .ok { color: #0f766e; }
-    .warn { color: #b45309; }
-    .bad { color: #b91c1c; }
+    .ok { color: #0f766e; font-weight: bold; }
+    .warn { color: #b45309; font-weight: bold; }
+    .bad { color: #b91c1c; font-weight: bold; }
+
+    .loader {
+      display: none;
+      margin-top: 10px;
+    }
   </style>
 </head>
+
 <body>
+
   <div class="card">
-    <h1>Automatización Modelo 303</h1>
-    <p class="muted">Sube el Excel de trabajo y uno o varios PDFs del modelo 303. Después procesa y revisa las casillas calculadas.</p>
+    <h1>Automatización de Modelos Fiscales</h1>
+    <p class="muted">
+      Sube Excel + PDFs → procesa → valida → descarga resultados.
+    </p>
+
     <form id="uploadForm">
       <label>Excel</label><br>
       <input type="file" name="excel_file" accept=".xlsx,.xls,.xlsm" required><br><br>
-      <label>PDFs modelo 303</label><br>
+
+      <label>PDFs</label><br>
       <input type="file" name="pdf_files" accept=".pdf" multiple><br><br>
+
       <button class="primary" type="submit">Subir archivos</button>
     </form>
+
     <div id="uploadStatus" class="muted"></div>
   </div>
 
+
   <div class="card">
     <h2>Proceso</h2>
-    <p>Process ID: <span id="processId">—</span></p>
-    <button id="processBtn" class="primary" type="button" disabled>Procesar</button>
+
+    <p>Process ID: <strong id="processId">—</strong></p>
+
+    <button id="processBtn" class="primary" disabled>
+      Procesar
+    </button>
+
     <div id="processStatus" class="muted"></div>
+    <div id="loader" class="loader">⏳ Procesando...</div>
   </div>
+
 
   <div class="card">
     <h2>Resultados</h2>
+
     <div id="summary"></div>
+
     <table id="resultsTable" style="display:none;">
       <thead>
         <tr>
@@ -56,77 +128,148 @@
       </thead>
       <tbody></tbody>
     </table>
+
     <div style="margin-top:1rem;">
-      <a id="downloadExcel" href="#" target="_blank">Descargar Excel</a>
+      <a id="downloadExcel" target="_blank">Descargar Excel</a>
       &nbsp;|&nbsp;
-      <a id="downloadJson" href="#" target="_blank">Descargar JSON</a>
+      <a id="downloadJson" target="_blank">Descargar JSON</a>
     </div>
   </div>
 
-  <script>
-    let processId = null;
 
-    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const formData = new FormData(e.target);
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) {
-        document.getElementById('uploadStatus').textContent = data.detail || 'Error en la subida';
-        return;
-      }
-      processId = data.process_id;
-      document.getElementById('processId').textContent = processId;
-      document.getElementById('processBtn').disabled = false;
-      document.getElementById('uploadStatus').textContent = 'Archivos subidos correctamente.';
+<script>
+
+let processId = null;
+
+
+// =========================
+// 📤 UPLOAD
+// =========================
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const formData = new FormData(e.target);
+  const status = document.getElementById('uploadStatus');
+
+  status.textContent = "Subiendo...";
+
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData
     });
 
-    document.getElementById('processBtn').addEventListener('click', async () => {
-      if (!processId) return;
-      document.getElementById('processStatus').textContent = 'Procesando...';
-      const res = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ process_id: processId })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        document.getElementById('processStatus').textContent = data.detail || 'Error de proceso';
-        return;
-      }
-      document.getElementById('processStatus').textContent = 'Proceso completado.';
-      await loadResults();
-    });
+    const data = await res.json();
 
-    async function loadResults() {
-      const res = await fetch(`/api/result?process_id=${processId}`);
-      const data = await res.json();
-      if (!data.box_results) return;
-      document.getElementById('summary').innerHTML = `
-        <p>Total casillas: ${data.summary.boxes_total}</p>
-        <p>Diferencias: ${data.summary.mismatches}</p>
-        <p>Hojas usadas: ${(data.summary.sheets_used || []).join(', ')}</p>
-      `;
-      const tbody = document.querySelector('#resultsTable tbody');
-      tbody.innerHTML = '';
-      for (const row of data.box_results) {
-        const tr = document.createElement('tr');
-        const statusClass = row.status === 'ok' ? 'ok' : (row.status === 'mismatch' ? 'bad' : 'warn');
-        tr.innerHTML = `
-          <td>${row.box_code}</td>
-          <td>${row.description || ''}</td>
-          <td>${row.excel_value ?? ''}</td>
-          <td>${row.pdf_value ?? ''}</td>
-          <td>${row.difference ?? ''}</td>
-          <td class="${statusClass}">${row.status}</td>
-          <td>${row.rule_name}</td>
-        `;
-        tbody.appendChild(tr);
-      }
-      document.getElementById('resultsTable').style.display = 'table';
-      document.getElementById('downloadExcel').href = `/api/download?process_id=${processId}&kind=excel`;
-      document.getElementById('downloadJson').href = `/api/download?process_id=${processId}&kind=json`;
+    if (!res.ok) {
+      throw new Error(data.detail || "Error en subida");
     }
-  </script>
+
+    processId = data.process_id;
+
+    document.getElementById('processId').textContent = processId;
+    document.getElementById('processBtn').disabled = false;
+
+    status.textContent = "✔ Archivos subidos correctamente";
+
+  } catch (err) {
+    status.textContent = "❌ " + err.message;
+  }
+});
+
+
+// =========================
+// ⚙️ PROCESS
+// =========================
+
+document.getElementById('processBtn').addEventListener('click', async () => {
+  if (!processId) return;
+
+  const status = document.getElementById('processStatus');
+  const loader = document.getElementById('loader');
+
+  loader.style.display = "block";
+  status.textContent = "";
+
+  try {
+    const res = await fetch('/api/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ process_id: processId })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.detail || "Error procesando");
+    }
+
+    status.textContent = "✔ Proceso completado";
+
+    await loadResults();
+
+  } catch (err) {
+    status.textContent = "❌ " + err.message;
+  } finally {
+    loader.style.display = "none";
+  }
+});
+
+
+// =========================
+// 📊 RESULT
+// =========================
+
+async function loadResults() {
+
+  const res = await fetch(`/api/result?process_id=${processId}`);
+  const data = await res.json();
+
+  if (!data.data || !data.data.box_results) return;
+
+  const result = data.data;
+
+  document.getElementById('summary').innerHTML = `
+    <p>Total casillas: ${result.summary.boxes_total}</p>
+    <p>Diferencias: ${result.summary.mismatches}</p>
+    <p>Hojas usadas: ${(result.summary.sheets_used || []).join(', ')}</p>
+  `;
+
+  const tbody = document.querySelector('#resultsTable tbody');
+  tbody.innerHTML = '';
+
+  for (const row of result.box_results) {
+
+    const tr = document.createElement('tr');
+
+    const statusClass =
+      row.status === 'ok' ? 'ok' :
+      row.status === 'mismatch' ? 'bad' : 'warn';
+
+    tr.innerHTML = `
+      <td>${row.box_code}</td>
+      <td>${row.description || ''}</td>
+      <td>${row.excel_value ?? ''}</td>
+      <td>${row.pdf_value ?? ''}</td>
+      <td>${row.difference ?? ''}</td>
+      <td class="${statusClass}">${row.status}</td>
+      <td>${row.rule_name}</td>
+    `;
+
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('resultsTable').style.display = 'table';
+
+  document.getElementById('downloadExcel').href =
+    `/api/download?process_id=${processId}&kind=excel`;
+
+  document.getElementById('downloadJson').href =
+    `/api/download?process_id=${processId}&kind=json`;
+}
+
+</script>
+
 </body>
 </html>
