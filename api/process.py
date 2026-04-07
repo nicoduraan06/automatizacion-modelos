@@ -27,9 +27,6 @@ def process(payload: ProcessRequest):
     try:
         process_id = payload.process_id
 
-        # =========================================================
-        # 🔹 MANIFEST
-        # =========================================================
         manifest_key = f"{process_id}/manifest.json"
 
         try:
@@ -39,9 +36,9 @@ def process(payload: ProcessRequest):
 
         manifest = json.loads(manifest_bytes.decode("utf-8"))
 
-        # =========================================================
-        # 🔹 EXCEL
-        # =========================================================
+        # =========================
+        # EXCEL
+        # =========================
         excel_key = manifest["excel"]["storage_key"]
         excel_name = manifest["excel"]["name"]
 
@@ -53,7 +50,6 @@ def process(payload: ProcessRequest):
             content=excel_bytes
         )
 
-        # 🔹 CELLS
         all_cells = []
         for sheet, cells in excel_data.cell_index.items():
             for coord, data in cells.items():
@@ -64,9 +60,9 @@ def process(payload: ProcessRequest):
                     "formula": data["formula"]
                 })
 
-        # =========================================================
-        # 🔥 PDF PARSING
-        # =========================================================
+        # =========================
+        # PDF
+        # =========================
         pdf_data = None
         model_from_pdf = None
 
@@ -79,9 +75,9 @@ def process(payload: ProcessRequest):
 
             model_from_pdf = pdf_data.get("model_key")
 
-        # =========================================================
-        # 🔥 DETECCIÓN MODELO
-        # =========================================================
+        # =========================
+        # DETECCIÓN MODELO
+        # =========================
         if model_from_pdf and model_from_pdf != "unknown":
             model_key = model_from_pdf
         else:
@@ -91,46 +87,51 @@ def process(payload: ProcessRequest):
         if model_key == "unknown":
             raise ValueError("No se ha podido detectar el modelo automáticamente")
 
-        # =========================================================
-        # 🔥 CARGA MODELO
-        # =========================================================
+        # =========================
+        # CARGA MODELO
+        # =========================
         loader = ModelLoader()
         model_definition = loader.load(model_key)
 
-        # =========================================================
-        # 🔥 RULE ENGINE (CON TRAZABILIDAD)
-        # =========================================================
+        # =========================
+        # RULE ENGINE
+        # =========================
         engine = RuleEngine(model_definition)
-        mapped_results = engine.apply(all_cells)
+        traceability = engine.apply(all_cells)
 
-        # =========================================================
-        # 🔥 VALIDACIÓN
-        # =========================================================
+        mapped_results = {
+            k: v["value"] for k, v in traceability.items()
+        }
+
+        # =========================
+        # VALIDACIÓN
+        # =========================
         validator = Validator()
-        validation_result = validator.validate(mapped_results, pdf_data)
+        validation_result = validator.validate(traceability, pdf_data)
 
-        # =========================================================
-        # 🔹 RESPUESTA FINAL
-        # =========================================================
-        return {
+        # =========================
+        # RESPUESTA FINAL
+        # =========================
+        response_payload = {
             "process_id": process_id,
             "model_detected": model_key,
             "pdf_data": pdf_data,
             "sheets_detected": excel_data.sheets_used,
             "total_cells": len(all_cells),
             "sample_cells": all_cells[:20],
-
-            # 🔥 RESULTADO LIMPIO (para frontend)
-            "mapped_results": {
-                k: v["value"] for k, v in mapped_results.items()
-            },
-
-            # 🔥 TRAZABILIDAD COMPLETA (modo auditor)
-            "traceability": mapped_results,
-
-            # 🔥 VALIDACIÓN
+            "mapped_results": mapped_results,
+            "traceability": traceability,
             "validation": validation_result
         }
+
+        # 🔥 GUARDAR RESULTADO (CLAVE)
+        storage.write_bytes(
+            f"{process_id}/result.json",
+            json.dumps(response_payload, ensure_ascii=False, indent=2, default=str).encode("utf-8"),
+            "application/json"
+        )
+
+        return response_payload
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No existe el proceso indicado")

@@ -2,13 +2,14 @@ from fastapi import FastAPI
 
 from api.upload import router as upload_router
 from api.process import router as process_router
+from api.download import router as download_router  # 🔥 NUEVO
 
 app = FastAPI(title="modelo303")
 
 
-# Registrar endpoints
 app.include_router(upload_router)
 app.include_router(process_router)
+app.include_router(download_router)  # 🔥 NUEVO
 
 
 @app.get("/")
