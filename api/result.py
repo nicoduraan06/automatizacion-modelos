@@ -1,25 +1,41 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
+import json
 
-from src.services.process_service import ProcessService
+from src.storage.factory import get_storage
 
-app = FastAPI(title="modelo303-result")
-service = ProcessService()
+router = APIRouter()
+
+storage = get_storage()
 
 
-@app.get("/")
-def result(process_id: str = Query(...)):
+@router.get("/result")
+def get_result(process_id: str = Query(...)):
     try:
-        data = service.load_result(process_id)
-        return data.model_dump()
-    except FileNotFoundError:
+        result_key = f"{process_id}/result.json"
+
         try:
-            manifest = service.load_manifest(process_id)
-            return {
-                "process_id": process_id,
-                "status": manifest.status,
-                "message": "Todavía no hay resultado procesado para este proceso"
-            }
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="No existe el proceso indicado")
+            result_bytes = storage.read_bytes(result_key)
+        except Exception:
+            raise FileNotFoundError("No existe resultado para ese process_id")
+
+        result_data = json.loads(result_bytes.decode("utf-8"))
+
+        return {
+            "process_id": process_id,
+            "status": "completed",
+            "data": result_data
+        }
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="No existe resultado para ese process_id"
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo resultado: {exc}"
+        )
