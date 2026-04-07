@@ -5,12 +5,13 @@ from pydantic import BaseModel
 import json
 
 from src.parsers.excel_parser import ExcelParser
-from src.parsers.pdf_parser import Pdf303Parser  # 🔥 NUEVO
+from src.parsers.pdf_parser import Pdf303Parser
 
 from src.storage.factory import get_storage
 from src.services.rule_engine import RuleEngine
 from src.services.model_detector import ModelDetector
 from src.services.model_loader import ModelLoader
+from src.services.validator import Validator
 
 router = APIRouter()
 
@@ -79,7 +80,7 @@ def process(payload: ProcessRequest):
             model_from_pdf = pdf_data.get("model_key")
 
         # =========================================================
-        # 🔥 DETECCIÓN MODELO (PRIORIDAD PDF > EXCEL)
+        # 🔥 DETECCIÓN MODELO (PDF > EXCEL)
         # =========================================================
         if model_from_pdf and model_from_pdf != "unknown":
             model_key = model_from_pdf
@@ -103,16 +104,23 @@ def process(payload: ProcessRequest):
         mapped_results = engine.apply(all_cells)
 
         # =========================================================
+        # 🔥 VALIDACIÓN EXCEL vs PDF
+        # =========================================================
+        validator = Validator()
+        validation_result = validator.validate(mapped_results, pdf_data)
+
+        # =========================================================
         # 🔹 RESPUESTA FINAL
         # =========================================================
         return {
             "process_id": process_id,
             "model_detected": model_key,
-            "pdf_data": pdf_data,  # 🔥 NUEVO
+            "pdf_data": pdf_data,
             "sheets_detected": excel_data.sheets_used,
             "total_cells": len(all_cells),
             "sample_cells": all_cells[:20],
-            "mapped_results": mapped_results
+            "mapped_results": mapped_results,
+            "validation": validation_result
         }
 
     except FileNotFoundError:
