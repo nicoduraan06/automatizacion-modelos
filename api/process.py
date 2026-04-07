@@ -6,6 +6,7 @@ import json
 
 from src.parsers.excel_parser import ExcelParser
 from src.storage.factory import get_storage
+from src.services.rule_engine import RuleEngine  # 🔥 NUEVO
 
 router = APIRouter()
 
@@ -31,13 +32,13 @@ def process(payload: ProcessRequest):
 
         manifest = json.loads(manifest_bytes.decode("utf-8"))
 
-        # 🔹 Leer Excel desde storage (NO usar tempfile en serverless)
+        # 🔹 Leer Excel desde storage
         excel_key = manifest["excel"]["storage_key"]
         excel_name = manifest["excel"]["name"]
 
         excel_bytes = storage.read_bytes(excel_key)
 
-        # 🔹 Usar parser en modo serverless
+        # 🔹 Parsear Excel
         parser = ExcelParser()
 
         excel_data = parser.parse_bytes(
@@ -45,7 +46,7 @@ def process(payload: ProcessRequest):
             content=excel_bytes
         )
 
-        # 🔹 Convertir a formato respuesta (debug inicial)
+        # 🔹 Convertir a lista de celdas
         all_cells = []
         for sheet, cells in excel_data.cell_index.items():
             for coord, data in cells.items():
@@ -56,11 +57,28 @@ def process(payload: ProcessRequest):
                     "formula": data["formula"]
                 })
 
+        # =========================================================
+        # 🔥 NUEVO: RULE ENGINE
+        # =========================================================
+
+        # 🔹 Cargar configuración del modelo (TU JSON)
+        with open("src/mappings/modelo303_rules.json", "r", encoding="utf-8") as f:
+            model_definition = json.load(f)
+
+        # 🔹 Ejecutar motor de reglas
+        engine = RuleEngine(model_definition)
+        mapped_results = engine.apply(all_cells)
+
+        # =========================================================
+
         return {
             "process_id": process_id,
             "sheets_detected": excel_data.sheets_used,
             "total_cells": len(all_cells),
-            "sample_cells": all_cells[:20]
+            "sample_cells": all_cells[:20],
+
+            # 🔥 NUEVO RESULTADO INTELIGENTE
+            "mapped_results": mapped_results
         }
 
     except FileNotFoundError:
