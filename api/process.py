@@ -6,7 +6,11 @@ import json
 
 from src.parsers.excel_parser import ExcelParser
 from src.storage.factory import get_storage
-from src.services.rule_engine import RuleEngine  # 🔥 NUEVO
+from src.services.rule_engine import RuleEngine
+
+# 🔥 NUEVOS IMPORTS
+from src.services.model_detector import ModelDetector
+from src.services.model_loader import ModelLoader
 
 router = APIRouter()
 
@@ -22,7 +26,9 @@ def process(payload: ProcessRequest):
     try:
         process_id = payload.process_id
 
+        # =========================================================
         # 🔹 Leer manifest
+        # =========================================================
         manifest_key = f"{process_id}/manifest.json"
 
         try:
@@ -32,13 +38,17 @@ def process(payload: ProcessRequest):
 
         manifest = json.loads(manifest_bytes.decode("utf-8"))
 
+        # =========================================================
         # 🔹 Leer Excel desde storage
+        # =========================================================
         excel_key = manifest["excel"]["storage_key"]
         excel_name = manifest["excel"]["name"]
 
         excel_bytes = storage.read_bytes(excel_key)
 
+        # =========================================================
         # 🔹 Parsear Excel
+        # =========================================================
         parser = ExcelParser()
 
         excel_data = parser.parse_bytes(
@@ -46,8 +56,11 @@ def process(payload: ProcessRequest):
             content=excel_bytes
         )
 
+        # =========================================================
         # 🔹 Convertir a lista de celdas
+        # =========================================================
         all_cells = []
+
         for sheet, cells in excel_data.cell_index.items():
             for coord, data in cells.items():
                 all_cells.append({
@@ -58,26 +71,35 @@ def process(payload: ProcessRequest):
                 })
 
         # =========================================================
-        # 🔥 NUEVO: RULE ENGINE
+        # 🔥 NUEVO: DETECCIÓN AUTOMÁTICA DE MODELO
         # =========================================================
+        detector = ModelDetector()
+        model_key = detector.detect(all_cells)
 
-        # 🔹 Cargar configuración del modelo (TU JSON)
-        with open("src/mappings/modelo303_rules.json", "r", encoding="utf-8") as f:
-            model_definition = json.load(f)
+        if model_key == "unknown":
+            raise ValueError("No se ha podido detectar el modelo automáticamente")
 
-        # 🔹 Ejecutar motor de reglas
+        # =========================================================
+        # 🔥 NUEVO: CARGA DINÁMICA DE CONFIGURACIÓN
+        # =========================================================
+        loader = ModelLoader()
+        model_definition = loader.load(model_key)
+
+        # =========================================================
+        # 🔥 RULE ENGINE
+        # =========================================================
         engine = RuleEngine(model_definition)
         mapped_results = engine.apply(all_cells)
 
         # =========================================================
-
+        # 🔹 RESPUESTA FINAL
+        # =========================================================
         return {
             "process_id": process_id,
+            "model_detected": model_key,  # 🔥 NUEVO
             "sheets_detected": excel_data.sheets_used,
             "total_cells": len(all_cells),
             "sample_cells": all_cells[:20],
-
-            # 🔥 NUEVO RESULTADO INTELIGENTE
             "mapped_results": mapped_results
         }
 
