@@ -16,7 +16,10 @@ class Validator:
 
         differences = []
 
-        for field_key, value in mapped_results.items():
+        for field_key, field_data in mapped_results.items():
+
+            # 🔥 ahora usamos estructura con trazabilidad
+            value = field_data["value"]
 
             # 🔹 intentar mapear a casilla
             box_code = self._map_field_to_box(field_key)
@@ -55,7 +58,6 @@ class Validator:
 
     def _map_field_to_box(self, field_key: str) -> str | None:
 
-        # 🔥 mapping simple (lo mejoraremos después)
         mapping = {
             "base_imponible_general": "001",
             "cuota_devengada_general": "003",

@@ -80,7 +80,7 @@ def process(payload: ProcessRequest):
             model_from_pdf = pdf_data.get("model_key")
 
         # =========================================================
-        # 🔥 DETECCIÓN MODELO (PDF > EXCEL)
+        # 🔥 DETECCIÓN MODELO
         # =========================================================
         if model_from_pdf and model_from_pdf != "unknown":
             model_key = model_from_pdf
@@ -98,13 +98,13 @@ def process(payload: ProcessRequest):
         model_definition = loader.load(model_key)
 
         # =========================================================
-        # 🔥 RULE ENGINE
+        # 🔥 RULE ENGINE (CON TRAZABILIDAD)
         # =========================================================
         engine = RuleEngine(model_definition)
         mapped_results = engine.apply(all_cells)
 
         # =========================================================
-        # 🔥 VALIDACIÓN EXCEL vs PDF
+        # 🔥 VALIDACIÓN
         # =========================================================
         validator = Validator()
         validation_result = validator.validate(mapped_results, pdf_data)
@@ -119,7 +119,16 @@ def process(payload: ProcessRequest):
             "sheets_detected": excel_data.sheets_used,
             "total_cells": len(all_cells),
             "sample_cells": all_cells[:20],
-            "mapped_results": mapped_results,
+
+            # 🔥 RESULTADO LIMPIO (para frontend)
+            "mapped_results": {
+                k: v["value"] for k, v in mapped_results.items()
+            },
+
+            # 🔥 TRAZABILIDAD COMPLETA (modo auditor)
+            "traceability": mapped_results,
+
+            # 🔥 VALIDACIÓN
             "validation": validation_result
         }
 

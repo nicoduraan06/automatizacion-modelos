@@ -11,7 +11,7 @@ class RuleEngine:
 
         fields = self.model_definition.get("fields", [])
 
-        # 🔹 Primera pasada: reglas simples
+        # 🔹 Primera pasada
         for field in fields:
             key = field["key"]
             rule = field.get("rule", {})
@@ -19,10 +19,16 @@ class RuleEngine:
 
             if rule_type == "label_match_sum":
                 hints = field.get("source_hints", [])
-                values = self._find_matches(cells, hints)
-                results[key] = sum(values)
+                matches = self._find_matches(cells, hints)
 
-        # 🔹 Segunda pasada: fórmulas
+                total = sum(m["value"] for m in matches)
+
+                results[key] = {
+                    "value": total,
+                    "sources": matches
+                }
+
+        # 🔹 Segunda pasada (fórmulas)
         for field in fields:
             key = field["key"]
             rule = field.get("rule", {})
@@ -30,12 +36,23 @@ class RuleEngine:
 
             if rule_type == "formula":
                 expression = rule.get("expression")
-                results[key] = self._evaluate_formula(expression, results)
+
+                context = {
+                    k: v["value"] if isinstance(v, dict) else v
+                    for k, v in results.items()
+                }
+
+                value = self._evaluate_formula(expression, context)
+
+                results[key] = {
+                    "value": value,
+                    "sources": []  # luego lo mejoraremos
+                }
 
         return results
 
-    def _find_matches(self, cells: List[Dict[str, Any]], hints: List[str]) -> List[float]:
-        values = []
+    def _find_matches(self, cells: List[Dict[str, Any]], hints: List[str]) -> List[Dict]:
+        matches = []
 
         for cell in cells:
             value = cell.get("value")
@@ -45,12 +62,20 @@ class RuleEngine:
                     if hint.lower() in value.lower():
                         numeric = self._extract_number(value)
                         if numeric is not None:
-                            values.append(numeric)
+                            matches.append({
+                                "sheet": cell["sheet"],
+                                "cell": cell["cell"],
+                                "value": numeric
+                            })
 
             elif isinstance(value, (int, float)):
-                values.append(value)
+                matches.append({
+                    "sheet": cell["sheet"],
+                    "cell": cell["cell"],
+                    "value": float(value)
+                })
 
-        return values
+        return matches
 
     def _extract_number(self, text: str):
         match = re.search(r"[-+]?\d*\.\d+|\d+", text.replace(",", "."))
