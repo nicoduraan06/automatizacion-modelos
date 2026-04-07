@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "functions": {
+    "api/*.py": {
+      "runtime": "python3.11"
+    }
+  },
+  "routes": [
+    { "src": "/", "dest": "/api/index.py" },
+    { "src": "/api/upload", "dest": "/api/upload.py" },
+    { "src": "/api/process", "dest": "/api/process.py" },
+    { "src": "/api/result", "dest": "/api/result.py" },
+    { "src": "/api/download", "dest": "/api/download.py" },
+    { "src": "/api/test_excel", "dest": "/api/test_excel.py" },
+    { "handle": "filesystem" }
+  ]
+}

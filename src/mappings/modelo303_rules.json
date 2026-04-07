@@ -1,0 +1,71 @@
+{
+  "metadata": {
+    "model_key": "modelo303",
+    "description": "Reglas genéricas del modelo 303. Adaptables a distintos Excel.",
+    "version": "2.0"
+  },
+  "fields": [
+    {
+      "key": "base_imponible_general",
+      "box_code": "001",
+      "description": "Base imponible general",
+      "type": "number",
+      "source_hints": [
+        "base imponible",
+        "base general",
+        "devengado base"
+      ],
+      "rule": {
+        "type": "label_match_sum"
+      }
+    },
+    {
+      "key": "cuota_devengada_general",
+      "box_code": "003",
+      "description": "Cuota devengada general",
+      "type": "number",
+      "source_hints": [
+        "cuota",
+        "iva repercutido",
+        "devengado cuota"
+      ],
+      "rule": {
+        "type": "label_match_sum"
+      }
+    },
+    {
+      "key": "iva_deducible",
+      "box_code": "028",
+      "description": "IVA deducible",
+      "type": "number",
+      "source_hints": [
+        "iva deducible",
+        "iva soportado",
+        "deducible"
+      ],
+      "rule": {
+        "type": "label_match_sum"
+      }
+    },
+    {
+      "key": "resultado_general",
+      "box_code": "046",
+      "description": "Resultado régimen general",
+      "type": "number",
+      "rule": {
+        "type": "formula",
+        "expression": "cuota_devengada_general - iva_deducible"
+      }
+    },
+    {
+      "key": "resultado_final",
+      "box_code": "070",
+      "description": "Resultado liquidación",
+      "type": "number",
+      "rule": {
+        "type": "formula",
+        "expression": "resultado_general"
+      }
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import json
+
+from src.models.contracts import ProcessManifest, ProcessResult
+from src.parsers.excel_parser import ExcelParser
+from src.parsers.pdf_303_parser import Pdf303Parser
+from src.services.mapping_service import MappingService
+from src.services.rectificativa_service import RectificativaService
+from src.storage.factory import get_storage
+from src.utils.common import json_dumps
+
+
+class ProcessService:
+    def __init__(self):
+        self.storage = get_storage()
+        self.excel_parser = ExcelParser()
+        self.pdf_parser = Pdf303Parser()
+        self.mapping_service = MappingService()
+        self.rectificativa_service = RectificativaService()
+
+    def _manifest_key(self, process_id: str) -> str:
+        return f"{process_id}/manifest.json"
+
+    def _result_key(self, process_id: str) -> str:
+        return f"{process_id}/result.json"
+
+    def load_manifest(self, process_id: str) -> ProcessManifest:
+        raw = self.storage.read_bytes(self._manifest_key(process_id))
+        return ProcessManifest.model_validate_json(raw)
+
+    def save_manifest(self, manifest: ProcessManifest) -> None:
+        self.storage.write_bytes(self._manifest_key(manifest.process_id), manifest.model_dump_json(indent=2).encode("utf-8"), "application/json")
+
+    def save_result(self, result: ProcessResult) -> None:
+        self.storage.write_bytes(self._result_key(result.process_id), result.model_dump_json(indent=2).encode("utf-8"), "application/json")
+
+    def load_result(self, process_id: str) -> ProcessResult:
+        raw = self.storage.read_bytes(self._result_key(process_id))
+        return ProcessResult.model_validate_json(raw)
+
+    def process(self, process_id: str) -> ProcessResult:
+        manifest = self.load_manifest(process_id)
+        manifest.status = "processing"
+        self.save_manifest(manifest)
+
+        excel_bytes = self.storage.read_bytes(manifest.excel.storage_key)
+        excel_data = self.excel_parser.parse(manifest.excel.name, excel_bytes)
+
+        pdf_data = []
+        for pdf in manifest.pdfs:
+            pdf_bytes = self.storage.read_bytes(pdf.storage_key)
+            pdf_data.append(self.pdf_parser.parse(pdf_bytes))
+
+        reference_pdf = pdf_data[0] if pdf_data else None
+        box_results = self.mapping_service.compute(excel_data, reference_pdf)
+        warnings = self.rectificativa_service.analyze(pdf_data)
+        validations = self._validate(excel_data, pdf_data, box_results)
+
+        result = ProcessResult(
+            process_id=process_id,
+            manifest=manifest,
+            excel_data=excel_data,
+            pdf_data=pdf_data,
+            box_results=box_results,
+            validations=validations,
+            warnings=warnings,
+            summary={
+                "boxes_total": len(box_results),
+                "mismatches": sum(1 for x in box_results if x.status == "mismatch"),
+                "warnings": len(warnings),
+                "sheets_used": excel_data.sheets_used,
+            },
+        )
+
+        manifest.status = "processed"
+        self.save_manifest(manifest)
+        self.save_result(result)
+        return result
+
+    def _validate(self, excel_data, pdf_data, box_results):
+        checks: list[str] = []
+        if pdf_data:
+            pdf0 = pdf_data[0]
+            if pdf0.nif:
+                checks.append(f"NIF PDF detectado: {pdf0.nif}")
+            if pdf0.period and pdf0.fiscal_year:
+                checks.append(f"Periodo/Ejercicio PDF detectados: {pdf0.period}/{pdf0.fiscal_year}")
+        mismatches = [x.box_code for x in box_results if x.status == "mismatch"]
+        if mismatches:
+            checks.append(f"Casillas con diferencias: {', '.join(mismatches)}")
+        else:
+            checks.append("No se detectan diferencias en las casillas configuradas frente al PDF de referencia.")
+        if not excel_data.sheets_used:
+            checks.append("No se han detectado hojas relevantes en el Excel.")
+        return checks
