@@ -4,7 +4,7 @@ import json
 
 from src.models.contracts import ProcessManifest, ProcessResult
 from src.parsers.excel_parser import ExcelParser
-from src.parsers.pdf_303_parser import Pdf303Parser
+from src.parsers.pdf_parser import Pdf303Parser
 from src.services.mapping_service import MappingService
 from src.services.rectificativa_service import RectificativaService
 from src.storage.factory import get_storage

@@ -5,10 +5,10 @@ from pydantic import BaseModel
 import json
 
 from src.parsers.excel_parser import ExcelParser
+from src.parsers.pdf_parser import Pdf303Parser  # 🔥 NUEVO
+
 from src.storage.factory import get_storage
 from src.services.rule_engine import RuleEngine
-
-# 🔥 NUEVOS IMPORTS
 from src.services.model_detector import ModelDetector
 from src.services.model_loader import ModelLoader
 
@@ -27,7 +27,7 @@ def process(payload: ProcessRequest):
         process_id = payload.process_id
 
         # =========================================================
-        # 🔹 Leer manifest
+        # 🔹 MANIFEST
         # =========================================================
         manifest_key = f"{process_id}/manifest.json"
 
@@ -39,28 +39,21 @@ def process(payload: ProcessRequest):
         manifest = json.loads(manifest_bytes.decode("utf-8"))
 
         # =========================================================
-        # 🔹 Leer Excel desde storage
+        # 🔹 EXCEL
         # =========================================================
         excel_key = manifest["excel"]["storage_key"]
         excel_name = manifest["excel"]["name"]
 
         excel_bytes = storage.read_bytes(excel_key)
 
-        # =========================================================
-        # 🔹 Parsear Excel
-        # =========================================================
         parser = ExcelParser()
-
         excel_data = parser.parse_bytes(
             filename=excel_name,
             content=excel_bytes
         )
 
-        # =========================================================
-        # 🔹 Convertir a lista de celdas
-        # =========================================================
+        # 🔹 CELLS
         all_cells = []
-
         for sheet, cells in excel_data.cell_index.items():
             for coord, data in cells.items():
                 all_cells.append({
@@ -71,16 +64,34 @@ def process(payload: ProcessRequest):
                 })
 
         # =========================================================
-        # 🔥 NUEVO: DETECCIÓN AUTOMÁTICA DE MODELO
+        # 🔥 PDF PARSING
         # =========================================================
-        detector = ModelDetector()
-        model_key = detector.detect(all_cells)
+        pdf_data = None
+        model_from_pdf = None
+
+        if manifest.get("pdfs"):
+            pdf_key = manifest["pdfs"][0]["storage_key"]
+            pdf_bytes = storage.read_bytes(pdf_key)
+
+            pdf_parser = Pdf303Parser()
+            pdf_data = pdf_parser.parse_bytes(pdf_bytes)
+
+            model_from_pdf = pdf_data.get("model_key")
+
+        # =========================================================
+        # 🔥 DETECCIÓN MODELO (PRIORIDAD PDF > EXCEL)
+        # =========================================================
+        if model_from_pdf and model_from_pdf != "unknown":
+            model_key = model_from_pdf
+        else:
+            detector = ModelDetector()
+            model_key = detector.detect(all_cells)
 
         if model_key == "unknown":
             raise ValueError("No se ha podido detectar el modelo automáticamente")
 
         # =========================================================
-        # 🔥 NUEVO: CARGA DINÁMICA DE CONFIGURACIÓN
+        # 🔥 CARGA MODELO
         # =========================================================
         loader = ModelLoader()
         model_definition = loader.load(model_key)
@@ -96,7 +107,8 @@ def process(payload: ProcessRequest):
         # =========================================================
         return {
             "process_id": process_id,
-            "model_detected": model_key,  # 🔥 NUEVO
+            "model_detected": model_key,
+            "pdf_data": pdf_data,  # 🔥 NUEVO
             "sheets_detected": excel_data.sheets_used,
             "total_cells": len(all_cells),
             "sample_cells": all_cells[:20],
